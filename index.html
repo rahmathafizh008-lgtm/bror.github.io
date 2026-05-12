@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>FireGuard IoT | Sistem Deteksi Kebakaran Real-time</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,300;14..32,400;14..32,500;14..32,600;14..32,700;14..32,800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://unpkg.com/mqtt@5.5.0/dist/mqtt.min.js"></script>
+    <style>
+        :root {
+            --bg-primary: #f0f4f8;
+            --bg-card: #ffffff;
+            --text-primary: #0f172a;
+            --text-secondary: #475569;
+            --border: #e2e8f0;
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+            --shadow-md: 0 4px 20px rgba(0, 0, 0, 0.06);
+            --shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.12);
+            --radius-lg: 24px;
+            --radius-md: 16px;
+            --radius-sm: 12px;
+            --green: #10b981;
+            --yellow: #f59e0b;
+            --red: #ef4444;
+            --blue: #3b82f6;
+            --purple: #8b5cf6;
+        }
+        body.dark {
+            --bg-primary: #0b1120;
+            --bg-card: #1e293b;
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --border: #334155;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            min-height: 100vh;
+            transition: background 0.3s, color 0.3s;
+        }
+        /* Login Modal */
+        .login-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(8px);
+        }
+        .login-container {
+            background: rgba(255, 255, 255, 0.98);
+            border-radius: 32px;
+            padding: 40px;
+            width: 90%;
+            max-width: 440px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            animation: slideUp 0.5s ease;
+        }
+        .dark .login-container { background: #1e293b; }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(30px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .login-brand { text-align: center; margin-bottom: 32px; }
+        .login-icon {
+            width: 70px; height: 70px;
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            border-radius: 20px;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 16px;
+        }
+        .login-icon i { font-size: 32px; color: white; }
+        .login-brand h2 {
+            font-size: 28px; font-weight: 700;
+            background: linear-gradient(135deg, #ef4444, #f97316);
+            -webkit-background-clip: text; background-clip: text;
+            color: transparent;
+        }
+        .login-brand p { color: var(--text-secondary); font-size: 14px; margin-top: 8px; }
+        .login-form { display: flex; flex-direction: column; gap: 20px; }
+        .input-group {
+            display: flex; align-items: center;
+            background: #f1f5f9; border-radius: 16px;
+            padding: 4px 16px; border: 2px solid transparent;
+            transition: all 0.3s;
+        }
+        .dark .input-group { background: #334155; }
+        .input-group:focus-within { border-color: #ef4444; background: var(--bg-card); }
+        .input-group i { color: #ef4444; font-size: 18px; margin-right: 12px; }
+        .input-group input {
+            flex: 1; padding: 14px 0; background: none;
+            border: none; outline: none; font-size: 15px;
+            color: var(--text-primary); font-weight: 500;
+        }
+        .login-btn {
+            background: linear-gradient(135deg, #ef4444, #dc2626);
+            color: white; border: none; padding: 14px;
+            border-radius: 16px; font-weight: 600; font-size: 16px;
+            cursor: pointer; display: flex; align-items: center;
+            justify-content: center; gap: 10px;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .login-btn:hover { transform: translateY(-2px); box-shadow: 0 8px 20px rgba(239, 68, 68, 0.3); }
+        .login-hint { text-align: center; padding-top: 12px; color: var(--text-secondary); }
+        
+        /* Dashboard */
+        .dashboard-wrapper { min-height: 100vh; padding: 20px; display: none; }
+        .main-container { max-width: 1400px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+        .top-bar {
+            background: var(--bg-card); border-radius: var(--radius-lg);
+            padding: 20px 24px; display: flex; justify-content: space-between;
+            align-items: center; flex-wrap: wrap; gap: 16px;
+            border: 1px solid var(--border); box-shadow: var(--shadow-md);
+        }
+        .top-left { display: flex; align-items: center; gap: 16px; }
+        .app-icon {
+            width: 52px; height: 52px; border-radius: 16px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 24px; transition: all 0.3s;
+        }
+        .icon-aman { background: linear-gradient(135deg, #10b981, #34d399); box-shadow: 0 4px 12px rgba(16,185,129,0.3); }
+        .icon-warning { background: linear-gradient(135deg, #f59e0b, #f97316); box-shadow: 0 4px 12px rgba(245,158,11,0.3); }
+        .icon-danger { background: linear-gradient(135deg, #ef4444, #dc2626); box-shadow: 0 4px 12px rgba(239,68,68,0.5); animation: pulseGlow 0.8s infinite; }
+        @keyframes pulseGlow { 0%,100% { box-shadow: 0 4px 12px rgba(239,68,68,0.5); } 50% { box-shadow: 0 8px 24px rgba(239,68,68,0.8); } }
+        .dashboard-title { font-size: 1.6rem; font-weight: 700; background: linear-gradient(135deg, var(--text-primary), var(--text-secondary)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .dashboard-subtitle { font-size: 0.75rem; color: var(--text-secondary); }
+        .top-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .conn-status { display: flex; align-items: center; gap: 8px; padding: 8px 16px; background: var(--bg-primary); border-radius: 40px; font-size: 0.75rem; font-weight: 500; cursor: pointer; }
+        .conn-dot { width: 10px; height: 10px; border-radius: 50%; background: #94a3b8; transition: all 0.3s; }
+        .conn-dot.connected { background: #10b981; box-shadow: 0 0 8px #10b981; animation: pulseGreen 2s infinite; }
+        @keyframes pulseGreen { 0%,100% { box-shadow: 0 0 0 0 rgba(16,185,129,0.4); } 50% { box-shadow: 0 0 0 8px rgba(16,185,129,0); } }
+        .status-badge { padding: 8px 20px; border-radius: 40px; font-weight: 700; font-size: 0.85rem; border: 2px solid transparent; }
+        .badge-aman { background: rgba(16,185,129,0.1); color: #10b981; border-color: rgba(16,185,129,0.3); }
+        .badge-warning { background: rgba(245,158,11,0.1); color: #f59e0b; border-color: rgba(245,158,11,0.3); }
+        .badge-danger { background: rgba(239,68,68,0.15); color: #ef4444; border-color: rgba(239,68,68,0.5); animation: badgePulse 1s infinite; }
+        @keyframes badgePulse { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.3); } 50% { box-shadow: 0 0 0 12px rgba(239,68,68,0); } }
+        .icon-btn { background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); width: 40px; height: 40px; border-radius: 40px; cursor: pointer; transition: all 0.2s; font-size: 18px; }
+        .icon-btn:hover { background: var(--bg-card); border-color: #ef4444; transform: scale(1.05); }
+        .risk-card { background: var(--bg-card); border-radius: var(--radius-lg); padding: 24px 32px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 20px; border: 1px solid var(--border); box-shadow: var(--shadow-md); }
+        .risk-score { display: flex; align-items: center; gap: 24px; }
+        .score-circle { width: 90px; height: 90px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', monospace; font-size: 1.8rem; font-weight: 800; background: var(--bg-primary); transition: all 0.3s; }
+        .score-low { border: 5px solid #10b981; color: #10b981; }
+        .score-mid { border: 5px solid #f59e0b; color: #f59e0b; }
+        .score-high { border: 5px solid #ef4444; color: #ef4444; animation: scoreGlow 0.8s infinite; }
+        @keyframes scoreGlow { 0%,100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.3); } 50% { box-shadow: 0 0 0 20px rgba(239,68,68,0); } }
+        .risk-info h3 { font-size: 1rem; font-weight: 600; color: var(--text-secondary); }
+        .risk-info p { font-size: 1.2rem; font-weight: 700; margin-top: 4px; }
+        .risk-trigger { display: flex; align-items: center; gap: 10px; padding: 12px 20px; background: var(--bg-primary); border-radius: 50px; font-weight: 600; color: var(--text-secondary); }
+        .sensor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+        .sensor-card { background: var(--bg-card); border-radius: var(--radius-md); padding: 20px; border: 1px solid var(--border); transition: transform 0.2s; }
+        .sensor-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-lg); }
+        .sensor-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .sensor-icon { width: 42px; height: 42px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+        .sensor-value { font-family: 'JetBrains Mono', monospace; font-size: 2.2rem; font-weight: 700; margin: 8px 0; }
+        .sensor-value.crit { color: #ef4444; text-shadow: 0 0 4px rgba(239,68,68,0.5); }
+        .sparkline-wrap { height: 40px; margin: 8px 0; }
+        .threshold-bar { height: 5px; background: var(--border); border-radius: 10px; overflow: hidden; margin-top: 8px; }
+        .threshold-fill { height: 100%; border-radius: 10px; transition: width 0.3s ease; }
+        .output-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 16px; }
+        .output-card { background: var(--bg-card); border-radius: var(--radius-sm); padding: 20px; text-align: center; border: 1px solid var(--border); }
+        .led-triple { display: flex; justify-content: center; gap: 12px; margin: 12px 0; }
+        .led-dot { width: 22px; height: 22px; border-radius: 50%; background: #64748b; transition: 0.2s; }
+        .led-dot.on-green { background: #10b981; box-shadow: 0 0 12px #10b981; }
+        .led-dot.on-yellow { background: #f59e0b; box-shadow: 0 0 12px #f59e0b; }
+        .led-dot.on-red { background: #ef4444; box-shadow: 0 0 14px #ef4444; animation: blinkRed 0.4s infinite; }
+        @keyframes blinkRed { 0%,100% { opacity: 1; } 50% { opacity: 0.2; } }
+        .control-bar { display: flex; gap: 12px; }
+        .btn { padding: 10px 20px; border-radius: 40px; font-weight: 600; font-size: 0.85rem; border: none; cursor: pointer; transition: all 0.2s; display: inline-flex; align-items: center; gap: 8px; font-family: 'Inter', sans-serif; }
+        .btn-outline { background: var(--bg-card); border: 2px solid var(--border); color: var(--text-primary); }
+        .btn-outline:hover { border-color: #ef4444; color: #ef4444; transform: translateY(-2px); }
+        .log-section { background: var(--bg-card); border-radius: var(--radius-lg); padding: 20px; border: 1px solid var(--border); }
+        .log-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; }
+        .log-filters { display: flex; gap: 8px; }
+        .log-filter-btn { padding: 6px 16px; border-radius: 30px; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-secondary); cursor: pointer; font-size: 0.75rem; font-weight: 500; transition: 0.2s; }
+        .log-filter-btn.active { background: #ef4444; color: white; border-color: #ef4444; }
+        .log-container { max-height: 320px; overflow-y: auto; }
+        .log-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
+        .log-table th { text-align: left; padding: 12px 8px; background: var(--bg-primary); color: var(--text-secondary); font-weight: 600; position: sticky; top: 0; }
+        .log-table td { padding: 10px 8px; border-bottom: 1px solid var(--border); }
+        .log-empty { text-align: center; padding: 40px; color: var(--text-secondary); }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center; }
+        .modal.active { display: flex; }
+        .modal-content { background: var(--bg-card); border-radius: var(--radius-lg); width: 90%; max-width: 500px; animation: modalIn 0.3s ease; }
+        @keyframes modalIn { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; padding: 20px 24px; border-bottom: 1px solid var(--border); }
+        .modal-close { background: none; border: none; font-size: 28px; cursor: pointer; color: var(--text-secondary); }
+        .modal-body { padding: 20px 24px; display: flex; flex-direction: column; gap: 16px; }
+        .threshold-item { display: flex; justify-content: space-between; align-items: center; gap: 16px; }
+        .threshold-item label { font-weight: 600; font-size: 0.85rem; }
+        .threshold-item input { width: 120px; padding: 8px 12px; border: 2px solid var(--border); border-radius: 10px; background: var(--bg-primary); color: var(--text-primary); font-weight: 500; }
+        .modal-footer { display: flex; justify-content: flex-end; gap: 12px; padding: 16px 24px; border-top: 1px solid var(--border); }
+        .btn-primary { background: linear-gradient(135deg, #ef4444, #dc2626); color: white; }
+        .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(239,68,68,0.4); }
+        .btn-secondary { background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); }
+        .fire-overlay { position: fixed; bottom: 0; left: 0; width: 100%; height: 40%; pointer-events: none; background: radial-gradient(ellipse at bottom, rgba(255,70,10,0.25) 0%, transparent 70%); opacity: 0; transition: opacity 0.6s; z-index: 50; }
+        .fire-overlay.active { opacity: 1; animation: flameFlicker 0.2s infinite alternate; }
+        @keyframes flameFlicker { 0% { opacity: 0.7; transform: scaleY(1); } 100% { opacity: 1; transform: scaleY(1.05); } }
+        .toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%) translateY(100px); background: #1e293b; color: white; padding: 12px 24px; border-radius: 50px; font-weight: 600; font-size: 0.85rem; z-index: 1000; box-shadow: 0 10px 30px rgba(0,0,0,0.3); transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1); pointer-events: none; }
+        .toast.show { transform: translateX(-50%) translateY(0); }
+        @media (max-width: 768px) { .dashboard-wrapper { padding: 12px; } .top-bar { flex-direction: column; text-align: center; } .top-left { flex-direction: column; } .risk-score { flex-direction: column; text-align: center; } .sensor-value { font-size: 1.8rem; } .log-table { font-size: 0.65rem; } }
+    </style>
+</head>
+<body>
+<div class="login-overlay" id="loginOverlay">
+    <div class="login-container">
+        <div class="login-brand">
+            <div class="login-icon"><i class="fas fa-fire-extinguisher"></i></div>
+            <h2>FireGuard IoT</h2>
+            <p>Sistem Deteksi Kebakaran Cerdas</p>
+        </div>
+        <div class="login-form">
+            <div class="input-group"><i class="fas fa-user"></i><input type="text" id="loginUsername" placeholder="Username" autocomplete="off"></div>
+            <div class="input-group"><i class="fas fa-lock"></i><input type="password" id="loginPassword" placeholder="Password"></div>
+            <button id="loginBtn" class="login-btn"><span>MASUK DASHBOARD</span><i class="fas fa-arrow-right"></i></button>
+            <div class="login-hint"><small>Demo: admin / admin123</small></div>
+        </div>
+    </div>
+</div>
+<div class="dashboard-wrapper" id="dashboardWrapper">
+    <div class="fire-overlay" id="fireOverlay"></div>
+    <div class="toast" id="toast"></div>
+    <div class="main-container">
+        <div class="top-bar">
+            <div class="top-left"><div class="app-icon icon-aman" id="appIcon"><i class="fas fa-shield-halved"></i></div><div><h1 class="dashboard-title">🔥 FireGuard IoT</h1><span class="dashboard-subtitle">MQTT Real-time · 7 Mode Prioritas</span></div></div>
+            <div class="top-right"><div class="conn-status" id="mqttStatusBtn"><div class="conn-dot" id="connDot"></div><span id="connLabel">MQTT: Menghubung...</span></div><div class="status-badge" id="statusBadge"><span>✅ SISTEM AMAN</span></div><button class="icon-btn" id="darkToggle" title="Mode Gelap"><i class="fas fa-moon"></i></button><button class="icon-btn" id="logoutBtn" title="Keluar"><i class="fas fa-sign-out-alt"></i></button></div>
+        </div>
+        <div class="risk-card"><div class="risk-score"><div class="score-circle" id="scoreCircle">0%</div><div class="risk-info"><h3>Skor Risiko Kebakaran</h3><p id="scoreDesc">Menunggu data sensor...</p></div></div><div class="risk-trigger"><i class="fas fa-exclamation-triangle"></i><span id="triggerText">0/4 sensor terpicu</span></div></div>
+        <div class="sensor-grid" id="sensorGrid"></div>
+        <div class="output-grid" id="outputGrid"></div>
+        <div class="control-bar"><button class="btn btn-outline" id="btnThreshold"><i class="fas fa-sliders-h"></i> Atur Threshold</button><button class="btn btn-outline" id="btnClearLog"><i class="fas fa-trash-alt"></i> Hapus Log</button></div>
+        <div class="log-section"><div class="log-header"><h3><i class="fas fa-history"></i> Riwayat Kejadian</h3><div class="log-filters"><button class="log-filter-btn active" data-filter="all">Semua</button><button class="log-filter-btn" data-filter="status">Status</button><button class="log-filter-btn" data-filter="sensor">Sensor</button></div></div><div class="log-container"><table class="log-table"><thead><tr><th>Waktu</th><th>Event</th><th>Status</th><th>MQ2</th><th>Api</th><th>Ruangan</th><th>Hum</th></tr></thead><tbody id="logBody"><tr><td colspan="7" class="log-empty">🔍 Menunggu data MQTT...</td></tr></tbody></table></div></div>
+    </div>
+</div>
+<div class="modal" id="thresholdModal"><div class="modal-content"><div class="modal-header"><h3><i class="fas fa-sliders-h"></i> Atur Threshold Sensor</h3><button class="modal-close" id="closeModalBtn">&times;</button></div><div class="modal-body"><div class="threshold-item"><label>MQ2 Gas (analog)</label><input type="number" id="thGas" value="2000" step="100"></div><div class="threshold-item"><label>Suhu Api Bahaya (°C)</label><input type="number" id="thFireDanger" value="70" step="1"></div><div class="threshold-item"><label>Suhu Api Waspada (°C)</label><input type="number" id="thFireWarn" value="50" step="1"></div><div class="threshold-item"><label>Suhu Ruangan Panas (°C)</label><input type="number" id="thRoomHot" value="40" step="1"></div><div class="threshold-item"><label>Kelembaban Kering (%)</label><input type="number" id="thHumDry" value="50" step="5"></div></div><div class="modal-footer"><button class="btn btn-secondary" id="cancelModalBtn">Batal</button><button class="btn btn-primary" id="saveThresholdBtn">Simpan</button></div></div></div>
+<script>
+(function(){
+    // Auth elements
+    const loginOverlay = document.getElementById('loginOverlay');
+    const dashboardWrapper = document.getElementById('dashboardWrapper');
+    const loginBtn = document.getElementById('loginBtn');
+    const loginUsername = document.getElementById('loginUsername');
+    const loginPassword = document.getElementById('loginPassword');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const VALID_USER = 'admin';
+    const VALID_PASS = 'admin123';
+    
+    function showToast(msg, dur=2500){
+        const t=document.getElementById('toast');
+        if(t){ t.textContent=msg; t.classList.add('show'); clearTimeout(t._timer); t._timer=setTimeout(()=>t.classList.remove('show'),dur); }
+    }
+    function checkAuth(){
+        if(sessionStorage.getItem('fireguard_logged_in')==='true'){
+            if(loginOverlay) loginOverlay.style.display='none';
+            if(dashboardWrapper) dashboardWrapper.style.display='block';
+            if(typeof initDashboard === 'function') initDashboard();
+        } else {
+            if(loginOverlay) loginOverlay.style.display='flex';
+            if(dashboardWrapper) dashboardWrapper.style.display='none';
+        }
+    }
+    if(loginBtn){
+        loginBtn.addEventListener('click',()=>{
+            if(loginUsername.value.trim()===VALID_USER && loginPassword.value===VALID_PASS){
+                sessionStorage.setItem('fireguard_logged_in','true');
+                checkAuth();
+                showToast('✅ Selamat datang, Admin!');
+            } else { showToast('❌ Username atau password salah!'); loginPassword.value=''; }
+        });
+    }
+    if(loginPassword) loginPassword.addEventListener('keypress',e=>{ if(e.key==='Enter') loginBtn.click(); });
+    if(logoutBtn) logoutBtn.addEventListener('click',()=>{ sessionStorage.removeItem('fireguard_logged_in'); if(window.mqttClient) window.mqttClient.end(); checkAuth(); showToast('🔓 Anda telah keluar'); });
+    if(localStorage.getItem('fireguard_dark')==='true') document.body.classList.add('dark');
+    const darkToggle=document.getElementById('darkToggle');
+    if(darkToggle) darkToggle.addEventListener('click',()=>{ document.body.classList.toggle('dark'); localStorage.setItem('fireguard_dark',document.body.classList.contains('dark')); });
+    
+    // State
+    let state = {
+        gasValue:0, objectTemp:0, roomTemp:0, humidity:0, status:'AMAN',
+        ledGreen:false, ledYellow:false, ledRed:false, relay:false, buzzer:false,
+        thresholds:{ gas:2000, fireDanger:70, fireWarn:50, roomHot:40, humDry:50 },
+        logs:[],
+        history:{ gas:Array(20).fill(0), objTemp:Array(20).fill(0), roomTemp:Array(20).fill(0), hum:Array(20).fill(0) },
+        mqttConnected:false
+    };
+    let charts={};
+    let currentLogFilter='all';
+    let mqttClient=null;
+    const BROKER = 'wss://broker.emqx.io:8084/mqtt';
+    const TOPIC='fire_detector/data';
+    
+    function applyOutputsByStatus(status){
+        state.ledGreen=state.ledYellow=state.ledRed=state.relay=state.buzzer=false;
+        if(status==='BAHAYA'){ state.ledRed=state.relay=state.buzzer=true; }
+        else if(['WASPADA','GAS_TERDETEKSI','API_TERDETEKSI','RUANGAN_PANAS'].includes(status)){ state.ledYellow=state.buzzer=true; }
+        else if(status==='RUANGAN_KERING'){}
+        else { state.ledGreen=true; }
+    }
+    function pushHistory(){
+        state.history.gas.push(state.gasValue);
+        state.history.objTemp.push(state.objectTemp);
+        state.history.roomTemp.push(state.roomTemp);
+        state.history.hum.push(state.humidity);
+        ['gas','objTemp','roomTemp','hum'].forEach(k=>{ if(state.history[k].length>20) state.history[k]=state.history[k].slice(-20); });
+        updateSparklines();
+    }
+    function addLog(eventType,detail){
+        const time=new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+        state.logs.unshift({time,eventType,detail,status:state.status,gas:state.gasValue,objTemp:state.objectTemp.toFixed(1),roomTemp:state.roomTemp.toFixed(1),hum:state.humidity.toFixed(1)});
+        if(state.logs.length>100) state.logs.pop();
+        renderLogs();
+    }
+    function renderLogs(){
+        const tbody=document.getElementById('logBody');
+        if(!tbody) return;
+        let data=state.logs;
+        if(currentLogFilter==='status') data=data.filter(l=>l.eventType==='status_change');
+        if(currentLogFilter==='sensor') data=data.filter(l=>l.eventType==='sensor_update'||l.eventType==='threshold_change');
+        if(!data.length){ tbody.innerHTML='<tr><td colspan="7" class="log-empty">📡 Menunggu data dari sensor...</td></tr>'; return; }
+        tbody.innerHTML=data.map(l=>{ let bc=l.status==='BAHAYA'?'badge-danger':(['WASPADA','GAS_TERDETEKSI','API_TERDETEKSI','RUANGAN_PANAS','RUANGAN_KERING'].includes(l.status)?'badge-warning':'badge-aman'); return `<tr><td>${l.time}</td><td><small>${l.detail}</small></td><td><span class="status-badge ${bc}" style="padding:4px 12px;font-size:0.7rem;">${l.status}</span></td><td>${l.gas}</td><td>${l.objTemp}</td><td>${l.roomTemp}</td><td>${l.hum}</td></tr>`; }).join('');
+    }
+    function updateUI(){
+        const vg=document.getElementById('val-gas'), vo=document.getElementById('val-objTemp'), vr=document.getElementById('val-roomTemp'), vh=document.getElementById('val-hum');
+        if(vg) vg.textContent=state.gasValue;
+        if(vo) vo.textContent=state.objectTemp.toFixed(1);
+        if(vr) vr.textContent=state.roomTemp.toFixed(1);
+        if(vh) vh.textContent=state.humidity.toFixed(1);
+        [vg,vo,vr,vh].forEach(el=>el?.classList.remove('crit'));
+        if(state.gasValue>=state.thresholds.gas) vg?.classList.add('crit');
+        if(state.objectTemp>=state.thresholds.fireWarn) vo?.classList.add('crit');
+        if(state.roomTemp>state.thresholds.roomHot) vr?.classList.add('crit');
+        if(state.humidity<state.thresholds.humDry) vh?.classList.add('crit');
+        const max={gas:4095,objTemp:100,roomTemp:60,hum:100};
+        ['gas','objTemp','roomTemp','hum'].forEach(k=>{ let val=state[k==='gas'?'gasValue':k==='objTemp'?'objectTemp':k==='roomTemp'?'roomTemp':'humidity']; let f=document.getElementById(`fill-${k}`); if(f) f.style.width=`${Math.min((val/max[k])*100,100)}%`; });
+        const lg=document.getElementById('ledGreen'), ly=document.getElementById('ledYellow'), lr=document.getElementById('ledRed');
+        if(lg) lg.className=`led-dot ${state.ledGreen?'on-green':''}`;
+        if(ly) ly.className=`led-dot ${state.ledYellow?'on-yellow':''}`;
+        if(lr) lr.className=`led-dot ${state.ledRed?'on-red':''}`;
+        const ll=document.getElementById('ledLabel'); if(ll) ll.textContent=state.ledGreen?'Hijau (Aman)':state.ledYellow?'Kuning (Waspada)':state.ledRed?'Merah (Bahaya!)':'Semua Mati';
+        const ri=document.getElementById('relayIcon'), rl=document.getElementById('relayLabel'); if(ri) ri.textContent=state.relay?'⚡':'🔌'; if(rl) rl.textContent=state.relay?'AKTIF':'OFF';
+        const bi=document.getElementById('buzzerIcon'), bl=document.getElementById('buzzerLabel'); if(bi) bi.textContent=state.buzzer?'🔊':'🔇'; if(bl) bl.textContent=state.buzzer?'Berbunyi!':'Diam';
+        const badge=document.getElementById('statusBadge'), icon=document.getElementById('appIcon'), fo=document.getElementById('fireOverlay');
+        if(badge) badge.classList.remove('badge-aman','badge-warning','badge-danger');
+        if(icon) icon.classList.remove('icon-aman','icon-warning','icon-danger');
+        if(fo) fo.classList.remove('active');
+        let dt='';
+        if(state.status==='BAHAYA'){
+            if(badge) badge.classList.add('badge-danger'); if(icon) icon.classList.add('icon-danger'); if(icon) icon.querySelector('i').className='fas fa-skull'; dt='🚨 BAHAYA! KEBAKARAN!'; if(fo) fo.classList.add('active');
+        } else if(['WASPADA','GAS_TERDETEKSI','API_TERDETEKSI','RUANGAN_PANAS'].includes(state.status)){
+            if(badge) badge.classList.add('badge-warning'); if(icon) icon.classList.add('icon-warning'); if(icon) icon.querySelector('i').className='fas fa-exclamation-triangle'; dt=`⚠️ ${state.status.replace(/_/g,' ')}`;
+        } else if(state.status==='RUANGAN_KERING'){
+            if(badge) badge.classList.add('badge-warning'); if(icon) icon.classList.add('icon-warning'); if(icon) icon.querySelector('i').className='fas fa-droplet-slash'; dt='💧 RUANGAN KERING';
+        } else {
+            if(badge) badge.classList.add('badge-aman'); if(icon) icon.classList.add('icon-aman'); if(icon) icon.querySelector('i').className='fas fa-shield-halved'; dt='✅ SISTEM AMAN';
+        }
+        if(badge) badge.innerHTML=`<span>${dt}</span>`;
+        let score=state.status==='BAHAYA'?100:['WASPADA','GAS_TERDETEKSI','API_TERDETEKSI'].includes(state.status)?70:state.status==='RUANGAN_PANAS'?40:state.status==='RUANGAN_KERING'?20:5;
+        const sc=document.getElementById('scoreCircle');
+        if(sc){ sc.textContent=score+'%'; sc.classList.remove('score-low','score-mid','score-high'); if(score>=70) sc.classList.add('score-high'); else if(score>=30) sc.classList.add('score-mid'); else sc.classList.add('score-low'); }
+        const sd=document.getElementById('scoreDesc'); if(sd) sd.textContent=state.status==='AMAN'?'Semua sensor dalam batas normal':'Ada indikasi risiko kebakaran';
+        let tr=(state.gasValue>=state.thresholds.gas?1:0)+(state.objectTemp>=state.thresholds.fireWarn?1:0)+(state.roomTemp>state.thresholds.roomHot?1:0)+(state.humidity<state.thresholds.humDry?1:0);
+        const tt=document.getElementById('triggerText'); if(tt) tt.textContent=`${tr}/4 sensor terpicu`;
+    }
+    function initSparklines(){
+        const cfg=[{id:'gas',color:'#8b5cf6'},{id:'objTemp',color:'#ef4444'},{id:'roomTemp',color:'#3b82f6'},{id:'hum',color:'#10b981'}];
+        cfg.forEach(c=>{ const ctx=document.getElementById(`spark-${c.id}`); if(ctx){ charts[c.id]=new Chart(ctx,{type:'line',data:{labels:Array(20).fill(''),datasets:[{data:Array(20).fill(0),borderColor:c.color,backgroundColor:c.color+'20',borderWidth:2,fill:true,pointRadius:0,tension:0.3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{enabled:false}},scales:{x:{display:false},y:{display:false}}}}); } });
+    }
+    function updateSparklines(){ ['gas','objTemp','roomTemp','hum'].forEach(k=>{ if(charts[k]){ charts[k].data.datasets[0].data=[...state.history[k]]; charts[k].update(); } }); }
+    function determineStatusFallback(){
+        const th=state.thresholds;
+        if(state.objectTemp>=th.fireDanger && state.gasValue>=th.gas && state.roomTemp>=35) return 'BAHAYA';
+        if(state.gasValue>=th.gas && state.objectTemp>=th.fireWarn) return 'WASPADA';
+        if(state.gasValue>=th.gas) return 'GAS_TERDETEKSI';
+        if(state.objectTemp>=th.fireWarn) return 'API_TERDETEKSI';
+        if(state.roomTemp>th.roomHot) return 'RUANGAN_PANAS';
+        if(state.humidity<th.humDry) return 'RUANGAN_KERING';
+        return 'AMAN';
+    }
+    function connectMQTT(){
+        mqttClient=mqtt.connect(BROKER);
+        window.mqttClient=mqttClient;
+        mqttClient.on('connect',()=>{
+            state.mqttConnected=true;
+            const cd=document.getElementById('connDot'), cl=document.getElementById('connLabel'), mi=document.getElementById('mqttIcon'), ml=document.getElementById('mqttLabel');
+            if(cd) cd.classList.add('connected'); if(cl) cl.innerHTML='MQTT: Terhubung'; if(mi) mi.innerHTML='🟢'; if(ml) ml.innerText='Subscribe OK';
+            mqttClient.subscribe(TOPIC,(err)=>{ if(!err) showToast('✅ Terhubung ke broker MQTT real-time'); });
+        });
+        mqttClient.on('message',(topic,msg)=>{ try{ const data=JSON.parse(msg.toString()); if(data.gas!==undefined) state.gasValue=Number(data.gas); if(data.objectTemp!==undefined) state.objectTemp=Number(data.objectTemp); if(data.roomTemp!==undefined) state.roomTemp=Number(data.roomTemp); if(data.humidity!==undefined) state.humidity=Number(data.humidity); let ns=data.status?data.status.toUpperCase():determineStatusFallback(); const valid=['BAHAYA','WASPADA','GAS_TERDETEKSI','API_TERDETEKSI','RUANGAN_PANAS','RUANGAN_KERING','AMAN']; if(!valid.includes(ns)) ns='AMAN'; const old=state.status; state.status=ns; applyOutputsByStatus(state.status); pushHistory(); updateUI(); if(old!==state.status) addLog('status_change',`Status berubah: ${old} → ${state.status}`); else addLog('sensor_update','Update data real-time dari MQTT'); }catch(e){ console.warn(e); } });
+        mqttClient.on('error',()=>{ state.mqttConnected=false; const cd=document.getElementById('connDot'), cl=document.getElementById('connLabel'), mi=document.getElementById('mqttIcon'), ml=document.getElementById('mqttLabel'); if(cd) cd.classList.remove('connected'); if(cl) cl.innerHTML='MQTT: Error'; if(mi) mi.innerHTML='🔴'; if(ml) ml.innerText='Koneksi gagal'; showToast('❌ Koneksi MQTT terputus'); });
+    }
+    function buildUI(){
+        const sg=document.getElementById('sensorGrid');
+        if(sg){
+            const sensors=[{id:'gas',label:'MQ2 - Sensor Gas',unit:'analog',icon:'fa-wind',color:'#8b5cf6'},{id:'objTemp',label:'MLX90614 - Suhu Api',unit:'°C',icon:'fa-fire',color:'#ef4444'},{id:'roomTemp',label:'DHT22 - Suhu Ruangan',unit:'°C',icon:'fa-temperature-high',color:'#3b82f6'},{id:'hum',label:'DHT22 - Kelembaban',unit:'%',icon:'fa-droplet',color:'#10b981'}];
+            sg.innerHTML=sensors.map(s=>`<div class="sensor-card"><div class="sensor-header"><div class="sensor-icon" style="background:${s.color}20; color:${s.color}"><i class="fas ${s.icon}"></i></div><span style="font-size:0.7rem;color:var(--text-secondary);">${s.label}</span></div><div class="sensor-value" id="val-${s.id}">0</div><span style="font-size:0.75rem;color:var(--text-secondary);">${s.unit}</span><div class="sparkline-wrap"><canvas id="spark-${s.id}"></canvas></div><div class="threshold-bar"><div class="threshold-fill" id="fill-${s.id}" style="width:0%;background:${s.color};"></div></div></div>`).join('');
+        }
+        const og=document.getElementById('outputGrid');
+        if(og){ og.innerHTML=`<div class="output-card"><p style="font-size:0.7rem;font-weight:600;color:var(--text-secondary);">LED Indikator</p><div class="led-triple"><span class="led-dot" id="ledGreen"></span><span class="led-dot" id="ledYellow"></span><span class="led-dot" id="ledRed"></span></div><small id="ledLabel" style="color:var(--text-secondary);">Hijau (Aman)</small></div><div class="output-card"><p style="font-size:0.7rem;font-weight:600;color:var(--text-secondary);">Relay Alarm</p><div style="font-size:2rem;" id="relayIcon">🔌</div><small id="relayLabel" style="color:var(--text-secondary);">OFF</small></div><div class="output-card"><p style="font-size:0.7rem;font-weight:600;color:var(--text-secondary);">Buzzer</p><div style="font-size:2rem;" id="buzzerIcon">🔇</div><small id="buzzerLabel" style="color:var(--text-secondary);">Diam</small></div><div class="output-card"><p style="font-size:0.7rem;font-weight:600;color:var(--text-secondary);">MQTT Broker</p><div style="font-size:2rem;" id="mqttIcon">🟠</div><small id="mqttLabel">Menunggu data</small></div>`; }
+    }
+    function initEventListeners(){
+        const btnThreshold=document.getElementById('btnThreshold');
+        if(btnThreshold) btnThreshold.addEventListener('click',()=>{ document.getElementById('thGas').value=state.thresholds.gas; document.getElementById('thFireDanger').value=state.thresholds.fireDanger; document.getElementById('thFireWarn').value=state.thresholds.fireWarn; document.getElementById('thRoomHot').value=state.thresholds.roomHot; document.getElementById('thHumDry').value=state.thresholds.humDry; document.getElementById('thresholdModal').classList.add('active'); });
+        const saveTh=document.getElementById('saveThresholdBtn');
+        if(saveTh) saveTh.addEventListener('click',()=>{ state.thresholds.gas=parseInt(document.getElementById('thGas').value)||2000; state.thresholds.fireDanger=parseFloat(document.getElementById('thFireDanger').value)||70; state.thresholds.fireWarn=parseFloat(document.getElementById('thFireWarn').value)||50; state.thresholds.roomHot=parseFloat(document.getElementById('thRoomHot').value)||40; state.thresholds.humDry=parseFloat(document.getElementById('thHumDry').value)||50; document.getElementById('thresholdModal').classList.remove('active'); addLog('threshold_change','Threshold sensor diperbarui'); showToast('✅ Threshold berhasil disimpan'); updateUI(); });
+        const closeModal=document.getElementById('closeModalBtn'), cancelModal=document.getElementById('cancelModalBtn');
+        if(closeModal) closeModal.addEventListener('click',()=>document.getElementById('thresholdModal').classList.remove('active'));
+        if(cancelModal) cancelModal.addEventListener('click',()=>document.getElementById('thresholdModal').classList.remove('active'));
+        const clearLog=document.getElementById('btnClearLog');
+        if(clearLog) clearLog.addEventListener('click',()=>{ state.logs=[]; renderLogs(); showToast('🗑️ Riwayat log dihapus'); });
+        document.querySelectorAll('.log-filter-btn').forEach(btn=>{ btn.addEventListener('click',function(){ document.querySelectorAll('.log-filter-btn').forEach(b=>b.classList.remove('active')); this.classList.add('active'); currentLogFilter=this.dataset.filter; renderLogs(); }); });
+    }
+    function initDashboard(){ buildUI(); initSparklines(); initEventListeners(); connectMQTT(); applyOutputsByStatus('AMAN'); updateUI(); }
+    checkAuth();
+})();
+</script>
+</body>
+</html>
